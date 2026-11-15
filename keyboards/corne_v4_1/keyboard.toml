@@ -86,9 +86,10 @@ _ _ _ _ _ _       _ _ _ _ _ _
 # QMK cornev4: DEBOUNCE 8
 debounce_time = 8
 
-# +1 subscriber for the RGB processor (src/rgb.rs)
+# +1 subscriber each for the RGB processor (src/rgb.rs)
 [event]
 keyboard.subs = 4
+connection_status_change.subs = 2
 
 [host]
 vial_enabled = true

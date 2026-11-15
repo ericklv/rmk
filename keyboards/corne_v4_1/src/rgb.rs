@@ -8,8 +8,9 @@ use embassy_rp::pio::{Common, Pio};
 use embassy_rp::pio_programs::ws2812::{Grb, PioWs2812, PioWs2812Program};
 use embassy_rp::{bind_interrupts, dma, pio};
 use embassy_time::Instant;
-use rmk::event::{KeyboardEvent, KeyboardEventPos};
+use rmk::event::{ConnectionStatusChangeEvent, KeyboardEvent, KeyboardEventPos};
 use rmk::macros::processor;
+use rmk::types::connection::UsbState;
 use rmk::vialrgb::{RGB_CONFIG, RgbConfig, effect};
 use smart_leds::RGB8;
 
@@ -67,7 +68,7 @@ bind_interrupts!(pub struct PioIrqs {
     PIO1_IRQ_0 => pio::InterruptHandler<PIO1>;
 });
 
-#[processor(subscribe = [KeyboardEvent], poll_interval = 33)]
+#[processor(subscribe = [KeyboardEvent, ConnectionStatusChangeEvent], poll_interval = 33)]
 pub struct RgbProcessor {
     leds: PioWs2812<'static, PIO1, 0, NUM_LEDS, Grb>,
     // Dropping Common would release the PIO block.
@@ -78,6 +79,8 @@ pub struct RgbProcessor {
     last: Option<[RGB8; NUM_LEDS]>,
     keys: [KeyFx; NUM_LEDS],
     next_accent: usize,
+    // Host suspended USB (synced to the peripheral); LEDs off like QMK RGB_MATRIX_SLEEP.
+    suspended: bool,
 }
 
 impl RgbProcessor {
@@ -94,7 +97,11 @@ impl RgbProcessor {
         let program = PioWs2812Program::new(&mut common);
         let leds = PioWs2812::new(&mut common, sm0, dma, dma_irq, pin, &program);
         let keys = [KeyFx { held: false, released_at: None, accent: TRIAD[0] }; NUM_LEDS];
-        Self { leds, _common: common, points, load_storage, last: None, keys, next_accent: 0 }
+        Self { leds, _common: common, points, load_storage, last: None, keys, next_accent: 0, suspended: false }
+    }
+
+    async fn on_connection_status_change_event(&mut self, event: ConnectionStatusChangeEvent) {
+        self.suspended = event.0.usb == UsbState::Suspended;
     }
 
     async fn on_keyboard_event(&mut self, event: KeyboardEvent) {
@@ -119,7 +126,8 @@ impl RgbProcessor {
         }
         let cfg = RGB_CONFIG.try_get().unwrap_or(DEFAULT);
         let timer = Instant::now().as_millis() as u16;
-        let frame = match cfg.mode {
+        let mode = if self.suspended { effect::OFF } else { cfg.mode };
+        let frame = match mode {
             effect::SOLID_COLOR => [hsv_to_rgb(cfg.hue, cfg.sat, cfg.val); NUM_LEDS],
             effect::BREATHING => {
                 // QMK effect_runner_i + BREATHING_math.
