@@ -28,6 +28,7 @@ defmt = "1"
 defmt-rtt = "1"
 panic-probe = { version = "1", features = ["print-defmt"] }
 static_cell = "2"
+smart-leds = "0.4"
 
 # [features]
 # avoid having to use --allow-multiple-definition linker flag

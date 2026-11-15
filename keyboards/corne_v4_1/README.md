@@ -3,7 +3,8 @@
 RMK v0.9 port of the [`cornev4`](https://github.com/ericklv/qmk-vial/tree/main/cornev4) QMK/Vial keymap for the foostan Corne v4.1 (RP2040, direct-pin, half-duplex split on GP12).
 
 - Left half = central (connect USB here), right half = peripheral.
-- Layers 0–5 identical to QMK; RGB matrix keys on layer 3 map to `No` (RMK has no RGB matrix support). Encoders not configured.
+- Layers 0–5 identical to QMK; RGB matrix keys on layer 3 map to `No`. Encoders not configured.
+- RGB (`src/rgb.rs`, WS2812 on GP10 via PIO1, 23 LEDs per half, max 120/255, ~30 fps): base layer breathes blue, layer 1 green, 2 orange, 3 red, caps lock white. Layer and caps state are synced to the right half.
 - Debounce 8 ms, split serial 115200 baud (PIO half-duplex), Vial unlock Q+P, Vial UID kept from QMK.
 
 ## Build

@@ -86,6 +86,11 @@ _ _ _ _ _ _       _ _ _ _ _ _
 # QMK cornev4: DEBOUNCE 8
 debounce_time = 8
 
+# +1 subscriber each for the RGB processor (src/rgb.rs)
+[event]
+layer_change.subs = 2
+led_indicator.subs = 4
+
 [host]
 vial_enabled = true
 # Vial unlock combo: Q (left) + P (right), same as QMK cornev4
