@@ -3,11 +3,11 @@
 # Left half = central (USB), right half = peripheral.
 
 [keyboard]
-name = "Corne v4.1"
-product_name = "Corne v4.1"
+name = "Corne v4.1 RMK"
+product_name = "Corne v4.1 RMK"
 vendor_id = 0x4653
 product_id = 0x0004
-manufacturer = "foostan"
+manufacturer = "eleve"
 chip = "rp2040"
 
 # Unified matrix: rows 0-3 left, rows 4-7 right (same as QMK crkbd/rev4_1).
