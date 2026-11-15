@@ -1,0 +1,49 @@
+name: Corne v4.1 firmware
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+concurrency:
+  group: corne-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: keyboards/corne_v4_1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+
+      # rust-toolchain.toml in the project pins channel, target and components
+      - name: Install toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: keyboards/corne_v4_1
+          cache-all-crates: true
+
+      - name: Install flip-link and elf2uf2-rs
+        run: cargo install flip-link elf2uf2-rs --locked
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Convert to UF2
+        run: |
+          mkdir -p out
+          for b in central peripheral; do
+            elf2uf2-rs target/thumbv6m-none-eabi/release/$b out/corne_v4_1_$b.uf2
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: corne_v4_1-${{ github.sha }}
+          path: keyboards/corne_v4_1/out/*.uf2

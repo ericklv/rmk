@@ -1,0 +1,136 @@
+# Corne v4.1 (foostan, RP2040) — port of ericklv/qmk-vial cornev4 keymap
+# Hardware: direct-pin matrix per half, half-duplex single-wire split on GP12.
+# Left half = central (USB), right half = peripheral.
+
+[keyboard]
+name = "Corne v4.1"
+product_name = "Corne v4.1"
+vendor_id = 0x4653
+product_id = 0x0004
+manufacturer = "foostan"
+chip = "rp2040"
+
+# Unified matrix: rows 0-3 left, rows 4-7 right (same as QMK crkbd/rev4_1).
+# Right-half col 0 is its outer column, mirroring QMK.
+[layout]
+rows = 8
+cols = 7
+map = """
+(0,0) (0,1) (0,2) (0,3) (0,4) (0,5) (0,6)   (4,6) (4,5) (4,4) (4,3) (4,2) (4,1) (4,0)
+(1,0) (1,1) (1,2) (1,3) (1,4) (1,5) (1,6)   (5,6) (5,5) (5,4) (5,3) (5,2) (5,1) (5,0)
+(2,0) (2,1) (2,2) (2,3) (2,4) (2,5)               (6,5) (6,4) (6,3) (6,2) (6,1) (6,0)
+                  (3,3) (3,4) (3,5)               (7,5) (7,4) (7,3)
+"""
+
+[keymap]
+layers = 6
+
+# Layer 0 — base QWERTY
+[[keymap.layer]]
+name = "base"
+keys = """
+Escape  Q  W  E  R  T  PageUp            PageDown      Y  U  I      O    P          Backspace
+Tab     A  S  D  F  G  LeftBracket       RightBracket  H  J  K      L    Semicolon  Quote
+LShift  Z  X  C  V  B                                  N  M  Comma  Dot  Slash      Enter
+               LGui  MO(1)  Space        RAlt  MO(2)  RCtrl
+"""
+
+# Layer 1 — numbers / navigation
+[[keymap.layer]]
+name = "num"
+keys = """
+Grave     Kc1  Kc2  Kc3   Kc4    Kc5  LCtrl      RCtrl  Kc6          Kc7           Kc8    Kc9    Kc0        Backspace
+PageUp    Kc6  Kc7  Kc8   Kc9    Kc0  LAlt       RAlt   Left         Down          Up     Right  Grave      Equal
+PageDown  Z    X    Left  Right  M                      LeftBracket  RightBracket  Comma  Dot    Backslash  Minus
+                 LGui  MO(1)  Space              Enter  MO(2)  RCtrl
+"""
+
+# Layer 2 — function / vim nav
+[[keymap.layer]]
+name = "fn"
+keys = """
+_         F1    F2         F3  F4     F5           F11     F12  F6  F7     F8     F9   F10  PrintScreen
+CapsLock  Left  Down       Up  Right  _            _       _    _   U      Left   I    F11  Delete
+TG(3)     _     Backspace  _   _      SystemSleep               F12 J      Right  K    End  Home
+          WM(LCtrl, LAlt)  WM(RAlt, RCtrl)  MO(0)   Enter  _  _
+"""
+
+# Layer 3 — boot (QMK RGB matrix keys have no RMK equivalent; mapped to No)
+[[keymap.layer]]
+name = "sys"
+keys = """
+Bootloader  No  No  No  No  No  No     No  No  No  No  No  No  No
+No          No  No  No  No  No  A      No  No  No  No  No  No  No
+No          No  No  No  No  No             No  No  No  No  No  No
+                 LGui  _  Space        Enter  _  RGui
+"""
+
+# Layers 4-5 — transparent, free for Vial
+[[keymap.layer]]
+keys = """
+_ _ _ _ _ _ _   _ _ _ _ _ _ _
+_ _ _ _ _ _ _   _ _ _ _ _ _ _
+_ _ _ _ _ _       _ _ _ _ _ _
+      _ _ _       _ _ _
+"""
+
+[[keymap.layer]]
+keys = """
+_ _ _ _ _ _ _   _ _ _ _ _ _ _
+_ _ _ _ _ _ _   _ _ _ _ _ _ _
+_ _ _ _ _ _       _ _ _ _ _ _
+      _ _ _       _ _ _
+"""
+
+[rmk]
+# QMK cornev4: DEBOUNCE 8
+debounce_time = 8
+
+[host]
+vial_enabled = true
+# Vial unlock combo: Q (left) + P (right), same as QMK cornev4
+unlock_keys = [[0, 1], [4, 1]]
+
+[storage]
+
+[split]
+connection = "serial"
+
+[split.central]
+rows = 4
+cols = 7
+row_offset = 0
+col_offset = 0
+# Half-duplex PIO UART on GP12 (115200 baud, same as QMK cornev4)
+serial = [{ instance = "PIO0", tx_pin = "PIN_12", rx_pin = "PIN_12" }]
+
+[split.central.matrix]
+matrix_type = "direct_pin"
+direct_pin_low_active = true
+direct_pins = [
+    ["PIN_22", "PIN_20", "PIN_23", "PIN_26", "PIN_29", "PIN_0", "PIN_4"],
+    ["PIN_19", "PIN_18", "PIN_24", "PIN_27", "PIN_1", "PIN_2", "PIN_8"],
+    ["PIN_17", "PIN_16", "PIN_25", "PIN_28", "PIN_3", "PIN_9", "_"],
+    ["_", "_", "_", "PIN_14", "PIN_15", "PIN_11", "_"],
+]
+# Hold Q while plugging USB to enter BOOTSEL
+bootmagic = [0, 1]
+
+[[split.peripheral]]
+rows = 4
+cols = 7
+row_offset = 4
+col_offset = 0
+serial = [{ instance = "PIO0", tx_pin = "PIN_12", rx_pin = "PIN_12" }]
+
+[split.peripheral.matrix]
+matrix_type = "direct_pin"
+direct_pin_low_active = true
+direct_pins = [
+    ["PIN_8", "PIN_9", "PIN_3", "PIN_2", "PIN_1", "PIN_27", "PIN_25"],
+    ["PIN_11", "PIN_14", "PIN_4", "PIN_0", "PIN_28", "PIN_26", "PIN_23"],
+    ["PIN_15", "PIN_18", "PIN_5", "PIN_29", "PIN_20", "PIN_22", "_"],
+    ["_", "_", "_", "PIN_16", "PIN_17", "PIN_19", "_"],
+]
+# Hold P while plugging USB to enter BOOTSEL (local coords)
+bootmagic = [0, 1]
