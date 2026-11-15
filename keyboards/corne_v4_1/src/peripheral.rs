@@ -15,6 +15,6 @@ bind_interrupts!(struct DmaIrqs {
 mod keyboard_peripheral {
     #[register_processor(poll)]
     fn rgb() -> crate::rgb::RgbProcessor {
-        crate::rgb::RgbProcessor::new(p.PIO1, p.PIN_10, p.DMA_CH0, crate::DmaIrqs)
+        crate::rgb::RgbProcessor::new(p.PIO1, p.PIN_10, p.DMA_CH0, crate::DmaIrqs, &crate::rgb::POINTS[1])
     }
 }

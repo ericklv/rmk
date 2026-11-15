@@ -4,7 +4,7 @@ RMK v0.9 port of the [`cornev4`](https://github.com/ericklv/qmk-vial/tree/main/c
 
 - Left half = central (connect USB here), right half = peripheral.
 - Layers 0–5 identical to QMK; RGB matrix keys on layer 3 map to `No`. Encoders not configured.
-- RGB (`src/rgb.rs`, WS2812 on GP10 via PIO1, 23 LEDs per half, max 120/255, ~30 fps): base layer breathes blue, layer 1 green, 2 orange, 3 red, caps lock white. Layer and caps state are synced to the right half.
+- RGB (`src/rgb.rs`, WS2812 on GP10 via PIO1, 23 LEDs per half, ~30 fps): port of QMK `DUAL_BEACON` with the settings from the QMK build (#ff8291, hue 250 / sat 125 / val 82, speed 202).
 - Debounce 8 ms, split serial 115200 baud (PIO half-duplex), Vial unlock Q+P, Vial UID kept from QMK.
 
 ## Build
