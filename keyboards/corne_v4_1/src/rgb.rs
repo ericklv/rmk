@@ -15,10 +15,10 @@ use smart_leds::RGB8;
 /// LEDs per half (crkbd rev4_1: 21 per-key + 2 inner-column).
 pub const NUM_LEDS: usize = 23;
 
-/// Settings read over VialRGB from the QMK build: hue 250, sat 125 (#ff8291), val 82, speed 202.
+/// QMK build settings (VialRGB): hue 250, sat 125 (#ff8291), speed 202; val lowered from 82 to 30.
 const HUE: u8 = 250;
 const SAT: u8 = 125;
-const VAL: u8 = 82;
+const VAL: u8 = 30;
 const SPEED: u8 = 202;
 
 /// QMK `k_rgb_matrix_center`.
