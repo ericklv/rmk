@@ -1,4 +1,4 @@
-//! Per-half WS2812 driver running a port of QMK's RGB_MATRIX_DUAL_BEACON effect.
+//! Per-half WS2812 driver: ports of QMK RGB matrix effects, configured live from Vial (VialRGB).
 
 use embassy_rp::Peri;
 use embassy_rp::dma::ChannelInstance;
@@ -10,16 +10,20 @@ use embassy_rp::{bind_interrupts, dma, pio};
 use embassy_time::Instant;
 use rmk::event::LayerChangeEvent;
 use rmk::macros::processor;
+use rmk::vialrgb::{RGB_CONFIG, RgbConfig, effect};
 use smart_leds::RGB8;
 
 /// LEDs per half (crkbd rev4_1: 21 per-key + 2 inner-column).
 pub const NUM_LEDS: usize = 23;
 
-/// QMK build settings (VialRGB): hue 250, sat 125 (#ff8291), speed 202; val lowered from 82 to 30.
-const HUE: u8 = 250;
-const SAT: u8 = 125;
-const VAL: u8 = 30;
-const SPEED: u8 = 202;
+/// Same ceiling as the QMK build (RGB_MATRIX_MAXIMUM_BRIGHTNESS).
+const MAX_BRIGHTNESS: u8 = 120;
+
+/// Effects offered to Vial, in VialRGB ids.
+const SUPPORTED: [u16; 4] = [effect::OFF, effect::SOLID_COLOR, effect::BREATHING, effect::DUAL_BEACON];
+
+/// Used until Vial saves a config: QMK build's dual beacon #ff8291 (hue 250, sat 125), speed 202, val 30.
+const DEFAULT: RgbConfig = RgbConfig { mode: effect::DUAL_BEACON, speed: 202, hue: 250, sat: 125, val: 30 };
 
 /// QMK `k_rgb_matrix_center`.
 const CENTER: (i32, i32) = (112, 32);
@@ -46,6 +50,9 @@ pub struct RgbProcessor {
     // Dropping Common would release the PIO block.
     _common: Common<'static, PIO1>,
     points: &'static [(u8, u8); NUM_LEDS],
+    // Central only: storage is read on the first poll, once the storage task runs.
+    load_storage: bool,
+    last: Option<[RGB8; NUM_LEDS]>,
 }
 
 impl RgbProcessor {
@@ -55,31 +62,67 @@ impl RgbProcessor {
         dma: Peri<'static, D>,
         dma_irq: impl Binding<D::Interrupt, dma::InterruptHandler<D>> + 'static,
         points: &'static [(u8, u8); NUM_LEDS],
+        load_storage: bool,
     ) -> Self {
+        rmk::vialrgb::init(DEFAULT, MAX_BRIGHTNESS, &SUPPORTED);
         let Pio { mut common, sm0, .. } = Pio::new(pio, PioIrqs);
         let program = PioWs2812Program::new(&mut common);
         let leds = PioWs2812::new(&mut common, sm0, dma, dma_irq, pin, &program);
-        Self { leds, _common: common, points }
+        Self { leds, _common: common, points, load_storage, last: None }
     }
 
     async fn on_layer_change_event(&mut self, _event: LayerChangeEvent) {}
 
-    /// QMK effect_runner_sin_cos_i + DUAL_BEACON_math, same integer math.
     async fn poll(&mut self) {
+        if self.load_storage {
+            self.load_storage = false;
+            rmk::vialrgb::load_from_storage().await;
+        }
+        let cfg = RGB_CONFIG.try_get().unwrap_or(DEFAULT);
         let timer = Instant::now().as_millis() as u16;
-        let time = ((timer as u32 * (SPEED / 4) as u32) >> 8) as u8;
+        let frame = match cfg.mode {
+            effect::SOLID_COLOR => [hsv_to_rgb(cfg.hue, cfg.sat, cfg.val); NUM_LEDS],
+            effect::BREATHING => {
+                // QMK effect_runner_i + BREATHING_math.
+                let time = scale16by8(timer, (cfg.speed / 4).saturating_add(1)) as u8;
+                let x = sin8(time / 2).wrapping_sub(128) as i8;
+                let wave = (x.wrapping_abs() as i32 * 2) as u8;
+                [hsv_to_rgb(cfg.hue, cfg.sat, scale8(wave, cfg.val)); NUM_LEDS]
+            }
+            effect::DUAL_BEACON => self.dual_beacon(&cfg, timer),
+            _ => [RGB8::default(); NUM_LEDS],
+        };
+        // Skip identical frames to keep the data line quiet.
+        if self.last != Some(frame) {
+            self.leds.write(&frame).await;
+            self.last = Some(frame);
+        }
+    }
+
+    /// QMK effect_runner_sin_cos_i + DUAL_BEACON_math, same integer math.
+    fn dual_beacon(&self, cfg: &RgbConfig, timer: u16) -> [RGB8; NUM_LEDS] {
+        let time = scale16by8(timer, cfg.speed / 4) as u8;
         let cos_v = sin8(time.wrapping_add(64)) as i32 - 128;
         let sin_v = sin8(time) as i32 - 128;
-
         let mut frame = [RGB8::default(); NUM_LEDS];
         for (led, &(x, y)) in frame.iter_mut().zip(self.points.iter()) {
             let (dx, dy) = (x as i32 - CENTER.0, y as i32 - CENTER.1);
             // QMK passes (cos, sin) into params named (sin, cos).
-            let hue = (HUE as i32 + (dy * sin_v + dx * cos_v) / 128) as u8;
-            *led = hsv_to_rgb(hue, SAT, VAL);
+            let hue = (cfg.hue as i32 + (dy * sin_v + dx * cos_v) / 128) as u8;
+            *led = hsv_to_rgb(hue, cfg.sat, cfg.val);
         }
-        self.leds.write(&frame).await;
+        frame
     }
+}
+
+/// lib8tion scale16by8 with FASTLED_SCALE8_FIXED (as built by QMK).
+fn scale16by8(i: u16, scale: u8) -> u16 {
+    ((i as u32 * (1 + scale as u32)) >> 8) as u16
+}
+
+/// lib8tion scale8 with FASTLED_SCALE8_FIXED.
+fn scale8(i: u8, scale: u8) -> u8 {
+    ((i as u16 * (1 + scale as u16)) >> 8) as u8
 }
 
 /// FastLED/lib8tion sin8_C: 0..=255 maps to sin * 128 + 128.

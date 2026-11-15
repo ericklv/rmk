@@ -125,6 +125,9 @@ host = ["dep:byteorder"]
 ## Enable vial support
 vial = ["host"]
 
+## Enable VialRGB lighting control (state only; the LED driver is user code)
+vialrgb = ["vial"]
+
 ## **Experimental.** Enable DFU lock feature — physical key unlock for DFU firmware download
 dfu_lock = ["host_lock"]
 

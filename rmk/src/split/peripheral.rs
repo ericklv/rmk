@@ -165,6 +165,8 @@ impl<S: SplitWriter + SplitReader> SplitPeripheral<S> {
                         SplitMessage::SleepState(sleeping) => {
                             publish_event(SleepStateEvent::new(sleeping));
                         }
+                        #[cfg(feature = "vialrgb")]
+                        SplitMessage::Rgb(cfg) => crate::vialrgb::RGB_CONFIG.sender().send(cfg),
                         // --- dfu_split: firmware update handlers ---
                         #[cfg(feature = "dfu_split")]
                         SplitMessage::FirmwareHashQuery => {

@@ -43,7 +43,10 @@ static CONNECTION_TYPE_RESPONSE: Signal<crate::RawMutex, Option<ConnectionType>>
 #[cfg(feature = "_ble")]
 static ACTIVE_BLE_PROFILE_RESPONSE: Signal<crate::RawMutex, Option<u8>> = Signal::new();
 
-#[cfg(feature = "_ble")]
+#[cfg(feature = "vialrgb")]
+static RGB_CONFIG_RESPONSE: Signal<crate::RawMutex, Option<crate::vialrgb::RgbConfig>> = Signal::new();
+
+#[cfg(any(feature = "_ble", feature = "vialrgb"))]
 async fn request_read<T: Send>(msg: FlashOperationMessage, response: &Signal<crate::RawMutex, T>) -> T {
     response.reset();
     FLASH_CHANNEL.send(msg).await;
@@ -63,6 +66,11 @@ pub(crate) async fn read_peer_address(peer_id: u8) -> Option<PeerAddress> {
 #[cfg(feature = "_ble")]
 pub(crate) async fn read_connection_type() -> Option<ConnectionType> {
     request_read(FlashOperationMessage::ReadConnectionType, &CONNECTION_TYPE_RESPONSE).await
+}
+
+#[cfg(feature = "vialrgb")]
+pub(crate) async fn read_rgb_config() -> Option<crate::vialrgb::RgbConfig> {
+    request_read(FlashOperationMessage::ReadRgbConfig, &RGB_CONFIG_RESPONSE).await
 }
 
 #[cfg(feature = "_ble")]
@@ -168,6 +176,11 @@ pub(crate) enum FlashOperationMessage {
     #[cfg(feature = "_ble")]
     // Read the persisted active BLE profile number; storage task replies via `ACTIVE_BLE_PROFILE_RESPONSE`.
     ReadActiveBleProfile,
+    #[cfg(feature = "vialrgb")]
+    RgbConfig(crate::vialrgb::RgbConfig),
+    #[cfg(feature = "vialrgb")]
+    // Read the persisted RGB config; storage task replies via `RGB_CONFIG_RESPONSE`.
+    ReadRgbConfig,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -202,6 +215,8 @@ pub(crate) enum StorageKey {
     ActiveBleProfile,
     #[cfg(feature = "_ble")]
     BondInfo(u8),
+    #[cfg(feature = "vialrgb")]
+    RgbConfig,
 }
 
 impl StorageKey {
@@ -283,6 +298,8 @@ pub(crate) enum StorageData {
     BondInfo(ProfileInfo),
     #[cfg(feature = "_ble")]
     ActiveBleProfile(u8),
+    #[cfg(feature = "vialrgb")]
+    RgbConfig(crate::vialrgb::RgbConfig),
 }
 
 impl<'a> PostcardValue<'a> for StorageData {}
@@ -747,6 +764,20 @@ impl<F: AsyncNorFlash, const ROW: usize, const COL: usize, const NUM_LAYER: usiz
                 #[cfg(feature = "host")]
                 FlashOperationMessage::Morse { idx, morse } => {
                     self.store_data(StorageKey::morse(idx), &StorageData::Morse(morse))
+                        .await
+                }
+                #[cfg(feature = "vialrgb")]
+                FlashOperationMessage::ReadRgbConfig => {
+                    let resp = match self.fetch_data(StorageKey::RgbConfig).await {
+                        Some(StorageData::RgbConfig(v)) => Some(v),
+                        _ => None,
+                    };
+                    RGB_CONFIG_RESPONSE.signal(resp);
+                    continue;
+                }
+                #[cfg(feature = "vialrgb")]
+                FlashOperationMessage::RgbConfig(cfg) => {
+                    self.store_data(StorageKey::RgbConfig, &StorageData::RgbConfig(cfg))
                         .await
                 }
                 FlashOperationMessage::ConnectionType(ty) => {

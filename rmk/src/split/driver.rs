@@ -208,6 +208,11 @@ impl<T: SplitReader + SplitWriter> PeripheralManager<T> {
         #[cfg(feature = "display")]
         let mut modifier_sub = crate::event::ModifierEvent::subscriber();
         let mut sleep_sub = crate::event::SleepStateEvent::subscriber();
+        // A fresh receiver reports the current config as changed, so the peripheral gets it on connect.
+        #[cfg(feature = "vialrgb")]
+        let mut rgb_rx = crate::vialrgb::RGB_CONFIG
+            .receiver()
+            .expect("too many RGB_CONFIG receivers");
 
         // Send the current state once on startup so the peripheral matches us
         // even when no transition has happened since the central booted.
@@ -250,6 +255,7 @@ impl<T: SplitReader + SplitWriter> PeripheralManager<T> {
                     e = sleep_sub.next_event().fuse() => SplitMessage::SleepState(e.0),
                     with_feature("display"): e = wpm_sub.next_event().fuse() => SplitMessage::Wpm(e.0),
                     with_feature("display"): e = modifier_sub.next_event().fuse() => SplitMessage::Modifier(e.modifier.into_bits()),
+                    with_feature("vialrgb"): c = rgb_rx.changed().fuse() => SplitMessage::Rgb(c),
                 }
             };
 

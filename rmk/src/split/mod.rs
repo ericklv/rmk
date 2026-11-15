@@ -101,6 +101,9 @@ pub(crate) enum SplitMessage {
     /// Peripheral → Central: confirm mark_updated succeeded, about to reset.
     #[cfg(feature = "dfu_split")]
     FirmwareUpdateConfirm,
+    /// RGB config from central to peripheral
+    #[cfg(feature = "vialrgb")]
+    Rgb(crate::vialrgb::RgbConfig),
 }
 
 // -----------------------------------------------------------------------

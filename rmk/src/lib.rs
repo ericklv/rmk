@@ -115,6 +115,8 @@ pub mod state;
 pub mod storage;
 #[cfg(not(feature = "_no_usb"))]
 pub mod usb;
+#[cfg(feature = "vialrgb")]
+pub mod vialrgb;
 #[cfg(feature = "watchdog")]
 pub mod watchdog;
 

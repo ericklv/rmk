@@ -2,7 +2,7 @@
   "name": "Corne v4.1",
   "vendorId": "0x4653",
   "productId": "0x0004",
-  "lighting": "none",
+  "lighting": "vialrgb",
   "matrix": {
     "rows": 8,
     "cols": 7

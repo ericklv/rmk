@@ -125,14 +125,30 @@ impl<'a> VialService<'a> {
             ViaCommand::DynamicKeymapReset => {
                 warn!("Dynamic keymap reset -- not supported")
             }
+            #[cfg(feature = "vialrgb")]
+            ViaCommand::CustomSetValue => vialrgb_set_value(report),
+            #[cfg(feature = "vialrgb")]
+            ViaCommand::CustomGetValue => vialrgb_get_value(report),
+            #[cfg(feature = "vialrgb")]
+            ViaCommand::CustomSave => {
+                #[cfg(feature = "storage")]
+                if let Some(cfg) = crate::vialrgb::RGB_CONFIG.try_get() {
+                    crate::channel::FLASH_CHANNEL
+                        .send(crate::storage::FlashOperationMessage::RgbConfig(cfg))
+                        .await;
+                }
+            }
+            #[cfg(not(feature = "vialrgb"))]
             ViaCommand::CustomSetValue => {
                 // backlight/rgblight/rgb matrix/led matrix/audio settings here
                 warn!("Custom set value -- not supported")
             }
+            #[cfg(not(feature = "vialrgb"))]
             ViaCommand::CustomGetValue => {
                 // backlight/rgblight/rgb matrix/led matrix/audio settings here
                 warn!("Custom get value -- not supported")
             }
+            #[cfg(not(feature = "vialrgb"))]
             ViaCommand::CustomSave => {
                 // backlight/rgblight/rgb matrix/led matrix/audio settings here
                 warn!("Custom get value -- not supported")
@@ -353,4 +369,48 @@ mod tests {
             assert_eq!(BigEndian::read_u32(&get.input_data[2..6]), 0x00C0_FFEE);
         });
     }
+}
+
+/// VialRGB `id_lighting_get_value`: get_info (0x40), get_mode (0x41), get_supported (0x42).
+#[cfg(feature = "vialrgb")]
+fn vialrgb_get_value(report: &mut ViaReport) {
+    use crate::vialrgb::{RGB_CONFIG, VIALRGB_PROTOCOL_VERSION, max_brightness, supported};
+    let args = &mut report.input_data[2..];
+    match report.output_data[1] {
+        0x40 => {
+            LittleEndian::write_u16(&mut args[0..2], VIALRGB_PROTOCOL_VERSION);
+            args[2] = max_brightness();
+        }
+        0x41 => {
+            if let Some(cfg) = RGB_CONFIG.try_get() {
+                LittleEndian::write_u16(&mut args[0..2], cfg.mode);
+                args[2..6].copy_from_slice(&[cfg.speed, cfg.hue, cfg.sat, cfg.val]);
+            }
+        }
+        0x42 => {
+            // Ids greater than `gt`, 0xFFFF-padded; the host pages until it sees 0xFFFF.
+            let gt = LittleEndian::read_u16(&args[0..2]);
+            args.fill(0xFF);
+            for (chunk, id) in args.chunks_exact_mut(2).zip(supported().iter().filter(|&&id| id > gt)) {
+                LittleEndian::write_u16(chunk, *id);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// VialRGB `id_lighting_set_value`: set_mode (0x41); direct mode is not supported.
+#[cfg(feature = "vialrgb")]
+fn vialrgb_set_value(report: &mut ViaReport) {
+    if report.output_data[1] != 0x41 {
+        return;
+    }
+    let args = &report.output_data[2..];
+    crate::vialrgb::apply(crate::vialrgb::RgbConfig {
+        mode: LittleEndian::read_u16(&args[0..2]),
+        speed: args[2],
+        hue: args[3],
+        sat: args[4],
+        val: args[5],
+    });
 }
