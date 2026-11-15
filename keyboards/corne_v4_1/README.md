@@ -4,7 +4,7 @@ RMK v0.9 port of the [`cornev4`](https://github.com/ericklv/qmk-vial/tree/main/c
 
 - Left half = central (connect USB here), right half = peripheral.
 - Layers 0–5 identical to QMK; RGB matrix keys on layer 3 map to `No`. Encoders not configured.
-- RGB (`src/rgb.rs`, WS2812 on GP10 via PIO1, 23 LEDs per half, ~30 fps): ports of QMK `SOLID_COLOR`, `BREATHING` and `DUAL_BEACON`, controlled from Vial's Lighting tab (VialRGB, `vialrgb` feature of the forked `rmk`). Default: dual beacon #ff8291, speed 202, brightness 30/255 (max 120).
+- RGB (`src/rgb.rs`, WS2812 on GP10 via PIO1, 23 LEDs per half, ~30 fps): ports of QMK `SOLID_COLOR`, `BREATHING` and `DUAL_BEACON`, plus a reactive dual beacon in Vial's "Solid Splash" slot (pressed keys fade to a triad of their beacon hue, alternating +120°/+240°), controlled from Vial's Lighting tab (VialRGB, `vialrgb` feature of the forked `rmk`). Default: dual beacon #ff8291, speed 202, brightness 30/255 (max 120).
 - Debounce 8 ms, split serial 115200 baud (PIO half-duplex), Vial unlock Q+P, Vial UID kept from QMK.
 
 ## Build

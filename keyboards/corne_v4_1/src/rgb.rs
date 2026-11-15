@@ -8,7 +8,7 @@ use embassy_rp::pio::{Common, Pio};
 use embassy_rp::pio_programs::ws2812::{Grb, PioWs2812, PioWs2812Program};
 use embassy_rp::{bind_interrupts, dma, pio};
 use embassy_time::Instant;
-use rmk::event::LayerChangeEvent;
+use rmk::event::{KeyboardEvent, KeyboardEventPos};
 use rmk::macros::processor;
 use rmk::vialrgb::{RGB_CONFIG, RgbConfig, effect};
 use smart_leds::RGB8;
@@ -19,8 +19,32 @@ pub const NUM_LEDS: usize = 23;
 /// Same ceiling as the QMK build (RGB_MATRIX_MAXIMUM_BRIGHTNESS).
 const MAX_BRIGHTNESS: u8 = 120;
 
-/// Effects offered to Vial, in VialRGB ids.
-const SUPPORTED: [u16; 4] = [effect::OFF, effect::SOLID_COLOR, effect::BREATHING, effect::DUAL_BEACON];
+/// Effects offered to Vial, in VialRGB ids. SOLID_SPLASH slot = reactive dual beacon (see `dual_beacon_reactive`).
+const SUPPORTED: [u16; 5] = [
+    effect::OFF,
+    effect::SOLID_COLOR,
+    effect::BREATHING,
+    effect::DUAL_BEACON,
+    effect::SOLID_SPLASH,
+];
+
+/// Triad hue offsets (+120°, +240°), alternated on each key press.
+const TRIAD: [u8; 2] = [85, 170];
+
+/// LED index per local (row, col), 0xFF = no LED; same on both halves (QMK rgb_matrix.layout).
+const KEY_LED: [[u8; 7]; 4] = [
+    [18, 17, 12, 11, 4, 3, 21],
+    [19, 16, 13, 10, 5, 2, 22],
+    [20, 15, 14, 9, 6, 1, 0xFF],
+    [0xFF, 0xFF, 0xFF, 8, 7, 0, 0xFF],
+];
+
+#[derive(Clone, Copy)]
+struct KeyFx {
+    held: bool,
+    released_at: Option<Instant>,
+    accent: u8,
+}
 
 /// Used until Vial saves a config: QMK build's dual beacon #ff8291 (hue 250, sat 125), speed 202, val 30.
 const DEFAULT: RgbConfig = RgbConfig { mode: effect::DUAL_BEACON, speed: 202, hue: 250, sat: 125, val: 30 };
@@ -43,8 +67,7 @@ bind_interrupts!(pub struct PioIrqs {
     PIO1_IRQ_0 => pio::InterruptHandler<PIO1>;
 });
 
-// The processor macro needs a subscription; layer changes are ignored, like in QMK.
-#[processor(subscribe = [LayerChangeEvent], poll_interval = 33)]
+#[processor(subscribe = [KeyboardEvent], poll_interval = 33)]
 pub struct RgbProcessor {
     leds: PioWs2812<'static, PIO1, 0, NUM_LEDS, Grb>,
     // Dropping Common would release the PIO block.
@@ -53,6 +76,8 @@ pub struct RgbProcessor {
     // Central only: storage is read on the first poll, once the storage task runs.
     load_storage: bool,
     last: Option<[RGB8; NUM_LEDS]>,
+    keys: [KeyFx; NUM_LEDS],
+    next_accent: usize,
 }
 
 impl RgbProcessor {
@@ -68,10 +93,24 @@ impl RgbProcessor {
         let Pio { mut common, sm0, .. } = Pio::new(pio, PioIrqs);
         let program = PioWs2812Program::new(&mut common);
         let leds = PioWs2812::new(&mut common, sm0, dma, dma_irq, pin, &program);
-        Self { leds, _common: common, points, load_storage, last: None }
+        let keys = [KeyFx { held: false, released_at: None, accent: TRIAD[0] }; NUM_LEDS];
+        Self { leds, _common: common, points, load_storage, last: None, keys, next_accent: 0 }
     }
 
-    async fn on_layer_change_event(&mut self, _event: LayerChangeEvent) {}
+    async fn on_keyboard_event(&mut self, event: KeyboardEvent) {
+        // Rows 4-7 on the central are the right half's keys, forwarded over split.
+        let KeyboardEventPos::Key(pos) = event.pos else { return };
+        let Some(&led) = KEY_LED.get(pos.row as usize).and_then(|r| r.get(pos.col as usize)) else { return };
+        let Some(fx) = self.keys.get_mut(led as usize) else { return };
+        if event.pressed {
+            fx.held = true;
+            fx.accent = TRIAD[self.next_accent];
+            self.next_accent ^= 1;
+        } else {
+            fx.held = false;
+            fx.released_at = Some(Instant::now());
+        }
+    }
 
     async fn poll(&mut self) {
         if self.load_storage {
@@ -89,7 +128,8 @@ impl RgbProcessor {
                 let wave = (x.wrapping_abs() as i32 * 2) as u8;
                 [hsv_to_rgb(cfg.hue, cfg.sat, scale8(wave, cfg.val)); NUM_LEDS]
             }
-            effect::DUAL_BEACON => self.dual_beacon(&cfg, timer),
+            effect::DUAL_BEACON => self.dual_beacon_hues(&cfg, timer).map(|h| hsv_to_rgb(h, cfg.sat, cfg.val)),
+            effect::SOLID_SPLASH => self.dual_beacon_reactive(&cfg, timer),
             _ => [RGB8::default(); NUM_LEDS],
         };
         // Skip identical frames to keep the data line quiet.
@@ -99,17 +139,40 @@ impl RgbProcessor {
         }
     }
 
-    /// QMK effect_runner_sin_cos_i + DUAL_BEACON_math, same integer math.
-    fn dual_beacon(&self, cfg: &RgbConfig, timer: u16) -> [RGB8; NUM_LEDS] {
+    /// Per-LED hue of QMK effect_runner_sin_cos_i + DUAL_BEACON_math, same integer math.
+    fn dual_beacon_hues(&self, cfg: &RgbConfig, timer: u16) -> [u8; NUM_LEDS] {
         let time = scale16by8(timer, cfg.speed / 4) as u8;
         let cos_v = sin8(time.wrapping_add(64)) as i32 - 128;
         let sin_v = sin8(time) as i32 - 128;
-        let mut frame = [RGB8::default(); NUM_LEDS];
-        for (led, &(x, y)) in frame.iter_mut().zip(self.points.iter()) {
+        self.points.map(|(x, y)| {
             let (dx, dy) = (x as i32 - CENTER.0, y as i32 - CENTER.1);
             // QMK passes (cos, sin) into params named (sin, cos).
-            let hue = (cfg.hue as i32 + (dy * sin_v + dx * cos_v) / 128) as u8;
-            *led = hsv_to_rgb(hue, cfg.sat, cfg.val);
+            (cfg.hue as i32 + (dy * sin_v + dx * cos_v) / 128) as u8
+        })
+    }
+
+    /// Dual beacon where pressed keys blend (in RGB) to a triad of their beacon hue, fading out like QMK SOLID_REACTIVE.
+    fn dual_beacon_reactive(&self, cfg: &RgbConfig, timer: u16) -> [RGB8; NUM_LEDS] {
+        let hues = self.dual_beacon_hues(cfg, timer);
+        let now = Instant::now();
+        let mut frame = [RGB8::default(); NUM_LEDS];
+        for ((led, &hue), fx) in frame.iter_mut().zip(hues.iter()).zip(self.keys.iter()) {
+            let base = hsv_to_rgb(hue, cfg.sat, cfg.val);
+            let k = match (fx.held, fx.released_at) {
+                (true, _) => 255,
+                (false, Some(t)) => {
+                    let ms = (now - t).as_millis().min(u16::MAX as u64) as u16;
+                    255 - scale16by8(ms, cfg.speed.saturating_add(1)).min(255)
+                }
+                (false, None) => 0,
+            };
+            *led = if k == 0 {
+                base
+            } else {
+                let accent = hsv_to_rgb(hue.wrapping_add(fx.accent), cfg.sat, cfg.val);
+                let mix = |a: u8, b: u8| ((a as u16 * (255 - k) + b as u16 * k) / 255) as u8;
+                RGB8::new(mix(base.r, accent.r), mix(base.g, accent.g), mix(base.b, accent.b))
+            };
         }
         frame
     }

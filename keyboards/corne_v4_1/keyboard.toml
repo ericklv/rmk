@@ -88,7 +88,7 @@ debounce_time = 8
 
 # +1 subscriber for the RGB processor (src/rgb.rs)
 [event]
-layer_change.subs = 2
+keyboard.subs = 4
 
 [host]
 vial_enabled = true

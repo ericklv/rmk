@@ -16,6 +16,7 @@ pub mod effect {
     pub const SOLID_COLOR: u16 = 2;
     pub const BREATHING: u16 = 6;
     pub const DUAL_BEACON: u16 = 21;
+    pub const SOLID_SPLASH: u16 = 41;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, MaxSize)]
